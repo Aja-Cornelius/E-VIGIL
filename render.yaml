@@ -2,11 +2,13 @@ services:
   - type: web
     name: evigil-backend
     runtime: python
+    plan: free
     buildCommand: "pip install -r backend/requirements.txt"
     startCommand: "python backend/server.py"
 
   - type: web
     name: evigil-frontend
     runtime: static
+    plan: free
     buildCommand: "cd frontend && npm install && npm run build"
     staticPublishPath: "./frontend/dist"
