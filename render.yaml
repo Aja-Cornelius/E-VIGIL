@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: evigil-backend
+    runtime: python
+    buildCommand: "pip install -r backend/requirements.txt"
+    startCommand: "python backend/server.py"
+
+  - type: web
+    name: evigil-frontend
+    runtime: static
+    buildCommand: "cd frontend && npm install && npm run build"
+    staticPublishPath: "./frontend/dist"
