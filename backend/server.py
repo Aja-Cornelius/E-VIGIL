@@ -1,3 +1,4 @@
+import os
 import json
 import time
 import concurrent.futures
@@ -247,7 +248,9 @@ class FraudHTTPHandler(BaseHTTPRequestHandler):
         else:
             self.send_error(404, "Endpoint not found")
 
-def run(port=8080):
+def run(port=None):
+    if port is None:
+        port = int(os.environ.get("PORT", 8080))
     server = HTTPServer(("0.0.0.0", port), FraudHTTPHandler)
     print(f"[INFO] E-Vigil Python Fallback Backend running on port {port}...")
     print(f"[INFO] REST API Endpoint: POST http://localhost:{port}/api/v1/fraud/evaluate")
