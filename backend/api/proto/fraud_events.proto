@@ -1,0 +1,139 @@
+syntax = "proto3";
+
+package fraud_events;
+
+option go_package = "evigil/api/proto";
+
+message DeviceInitializationRequest {
+  ClientMetadata client_metadata = 1;
+  DeviceProfile device_profile = 2;
+  BiometricLiveness biometric_liveness = 3;
+  string timestamp = 4;
+}
+
+message ClientMetadata {
+  string account_number = 1;
+  string bvn_hash = 2;
+  string associated_phone = 3;
+}
+
+message DeviceProfile {
+  string device_guid = 1;
+  string os_platform = 2;
+  string os_version = 3;
+  string device_model = 4;
+  bool is_rooted = 5;
+  bool is_emulator = 6;
+  bool has_vpn_active = 7;
+  string ip_address = 8;
+  Telephony telephony = 9;
+}
+
+message Telephony {
+  string network_operator = 1;
+  string sim_serial_hash = 2;
+  bool is_roaming = 3;
+}
+
+message BiometricLiveness {
+  string session_token = 1;
+  double liveness_confidence_score = 2;
+  string challenge_type = 3;
+  double deepfake_probability = 4;
+}
+
+message DeviceInitializationResponse {
+  string status = 1;
+  string binding_id = 2;
+  string device_guid = 3;
+  repeated Policy enforced_policies = 4;
+  string system_action = 5;
+}
+
+message Policy {
+  string policy_code = 1;
+  string description = 2;
+  string expires_at = 3;
+  double max_allowed_velocity_ngn = 4;
+}
+
+message TransactionEvaluationRequest {
+  string transaction_id = 1;
+  string channel = 2;
+  SourceAccount source_account = 3;
+  DestinationAccount destination_account = 4;
+  PaymentDetails payment_details = 5;
+  DeviceContext device_context = 6;
+  BehavioralTelemetry behavioral_telemetry = 7;
+  string timestamp = 8;
+}
+
+message SourceAccount {
+  string account_number = 1;
+  string bank_code = 2;
+  string account_tier = 3;
+  double current_balance_ngn = 4;
+  int32 days_since_reactivation = 5;
+}
+
+message DestinationAccount {
+  string account_number = 1;
+  string bank_code = 2;
+  string institution_type = 3;
+  string account_name_resolved = 4;
+  int32 days_since_creation = 5;
+}
+
+message PaymentDetails {
+  double amount_ngn = 1;
+  string payment_reference = 2;
+  string currency = 3;
+}
+
+message DeviceContext {
+  string device_guid = 1;
+  string current_ip = 2;
+  string location_lat_long = 3;
+}
+
+message BehavioralTelemetry {
+  double keystroke_dwell_time_avg_ms = 1;
+  double flight_time_avg_ms = 2;
+  string input_method = 3;
+  double time_spent_on_transfer_screen_sec = 4;
+  double touch_pressure_normalized = 5;
+}
+
+message TransactionEvaluationResponse {
+  string transaction_id = 1;
+  string verdict = 2; // APPROVE, CHALLENGE, REJECT
+  double composite_risk_score = 3;
+  int32 execution_time_ms = 4;
+  AgentBreakdown agent_breakdown = 5;
+  Remediation remediation = 6;
+}
+
+message AgentBreakdown {
+  AgentResult device_agent = 1;
+  AgentResult behavioral_agent = 2;
+  AgentResult velocity_agent = 3;
+  AgentResult graph_mule_agent = 4;
+}
+
+message AgentResult {
+  double risk_contribution = 1;
+  string status = 2;
+  repeated string flags = 3;
+}
+
+message Remediation {
+  string action_required = 1;
+  string challenge_mechanism = 2; // Optional, for CHALLENGE
+  string reason_code = 3;
+  string user_display_message = 4;
+}
+
+service FraudDetectionService {
+  rpc BindDevice(DeviceInitializationRequest) returns (DeviceInitializationResponse);
+  rpc EvaluateTransaction(TransactionEvaluationRequest) returns (TransactionEvaluationResponse);
+}

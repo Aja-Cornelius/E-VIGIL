@@ -1,0 +1,1198 @@
+Project Requirement Document (PRD)
+Project Name: Project E-Vigil: Smart Agent System for Early Online Banking Fraud Detection
+1. Document Control & Metadata
+Author:
+ Lead Software Developer / Systems Architect
+Target Market:
+ Nigeria (Commercial Banks, 
+Neobanks
+, 
+FinTechs
+)
+Regulatory Alignment:
+ CBN Guidelines on Instant Payment Functionalities (Effective July 1, 2026), NDPA (Nigeria Data Protection Act). 
+System Architecture Style:
+ Event-driven, Distributed Micro-agents.
+2. Executive Summary & Problem Statement
+Despite an industry-wide decline in bulk fraud volumes, Nigeria’s banking sector suffered massive high-value losses due to highly targeted operations. The core issue is the 
+speed of settlement
+; the NIBSS Instant Payment (NIP) protocol moves money within seconds, leaving traditional batch-processed fraud detection completely useless.
+Local Threat Landscape Addressed:
+Account Takeover (ATO) via SIM-Swap:
+ Criminals clone SIM cards to intercept OTPs. 
+Sleeper/Mule Accounts:
+ Accounts opened via compromised or "farmed" KYC (BVN/NIN) that stay dormant for months before suddenly routing millions of Naira. 
+Social Engineering / "Mushing":
+ Victims are manipulated into transferring funds voluntarily via USSD or Mobile Apps.
+Generative AI Deepfakes:
+ Bypassing standard video-selfie liveness checks during remote digital onboarding. 
+3. System Architecture & Agent Design
+Instead of a single monolithic rules engine, the platform relies on 
+Multi-Agent Systems (MAS)
+. Autonomous intelligent micro-agents monitor individual scoped vectors and collaborate asynchronously to generate a holistic risk score ($
+R_s
+$) in under 
+150 milliseconds
+.
+                           [ Event Stream (Kafka
+) ]
+                                      |
+         +----------------------------+----------------------------+
+         |                            |                            |
+         v                            
+v
+                            
+v
+ [ Device 
+Agent ]
+             [ 
+Behavioral
+ Agent ]        [ Network Agent ]
+  - Fingerprint Match          - Keystroke Rhythm          - Node Multi-hop
+  - OS / Root Integrity        - Inactivity vs Spike       - Mule Pool Check
+         |                            |                            |
+         +----------------------------+----------------------------+
+                                      |
+                                      v
+                        [ Risk Scoring 
+Engine ]
+                                      |
+                      $
+R_s
+ \
+ge
+ 0.75
+$  |
+  $
+R_s
+ < 0.75$
+                        +-------------+-------------+
+                        |                           |
+                        v                           
+v
+              [ Intercept / Step-
+Up ]
+          [ Approve ]
+              - 24hr Limit / MFA
+The Micro-Agent Breakdown:
+Device-Fingerprint Agent:
+ Evaluates hardware profiles, OS versions, root/jailbreak status, and application concurrency. Flags when the same device tries to cycle through multiple BVN profiles.
+Behavioral
+ Biometrics Agent:
+ 
+Analyzes
+ 
+how
+ the user interacts with the application—typing rhythm, swipe patterns, copy-paste habits (pasting an account number vs typing it), and UI navigation speed. 
+Transactional Velocity Agent:
+ Tracks historical velocity bounds. Calculates rolling time-window transaction frequencies using sliding logarithmic decay equations:
+$$
+V_t
+ = \sum_{
+i
+=
+1}^
+{n} E_{amount} \
+cdot
+ e^{-\lambda(t - 
+t_i
+)}$$
+Graph Link (Mule Detector) Agent:
+ Maps instant payment nodes. It monitors if incoming funds are instantly fragmented and forwarded to known digital-wallet "cash-out" pools or Tier-3 
+neobank
+ accounts.
+4. Functional Requirements
+4.1 Onboarding & Device Binding (CBN 2026 Compliance)
+FR-1.1: Mandatory Device Binding:
+ The mobile app must restrict concurrent usage to a single unique device GUID. Any device change must automatically drop the application into an "Unauthenticated State." 
+FR-1.2: The 24-Hour Cooling Velocity Cap:
+ Upon activation of an account on a 
+new device
+, the system must automatically enforce a strict inbound and outbound transactional cap of 
+₦20,000 for the first 24 hours
+. 
+FR-1.3: Active Liveness Checks:
+ The onboarding process must reject flat media (photos, 
+prerecorded
+ videos) by using active challenge-response liveness tracking (e.g., specific random eye movements or randomized text phrases) to prevent generative AI deepfake spoofs. 
+4.2 Real-time Transaction Evaluation
+FR-2.1: In-Stream Risk Evaluation:
+ Every single NIP transaction request must be intercepted via an asynchronous message broker (e.g., Apache Kafka) and parsed by the Smart Agents.
+FR-2.2: Dormancy Reactivation Guard:
+ If an account shifts from a dormant state (no ledger updates for greater than 180 days) to active, any outbound transfer above ₦50,000 must trigger mandatory Multi-Factor Authentication (MFA) along with real-time validation against the centralized NIBSS BVN/NIN watchlists.
+4.3 Automated Mitigation and Step-Up Flow
+The system must handle risk tiers dynamically based on the final risk score output ($
+R_s
+ \in [0, 
+1]$
+):
+Risk Score Range
+Classification
+System Action
+$
+R_s
+ < 0.40$
+Low Risk
+Approve:
+ Post transaction directly to core banking middleware instantly.
+$0.40 \le 
+R_s
+ < 0.75$
+Medium Risk
+Step-Up:
+ Challenge with hardware-bound push notification or localized biometric check.
+$
+R_s
+ \
+ge
+ 0.75$
+High Risk
+Quarantine & Freeze:
+ Hold funds on hold status, flag the destination account across the open banking registry, and alert the InfoSec Ops desk.
+5. Non-Functional Requirements (
+NFRs
+)
+5.1 Performance & Latency
+NFR-1.1:
+ Total pipeline execution latency from transaction API receipt to agent determination must not exceed 
+180ms
+ to prevent timeout drops on NIBSS switches.
+NFR-1.2:
+ The system must comfortably maintain a throughput of 
+5,000 TPS
+ (Transactions Per Second) to match payday traffic surges typical in the Nigerian banking sector.
+5.2 Security, Compliance & Isolation
+NFR-2.1 Data Residency:
+ In accordance with the Nigeria Data Protection Act (NDPA), all PII (Personally Identifiable Information) including plain-text 
+BVNs
+, phone numbers, and facial vectors must be obfuscated via AES-256-GCM encryption before parsing or logging.
+NFR-2.2 Model 
+Explainability
+:
+ The system must output a specific, human-readable reason code string for every rule override or machine learning flag (e.g., 
+ERR_BEHAVIORAL_ANOMALY_USSD_VELOCITY
+) for audit logging and CBN compliance reviews.
+6. Technical Stack Recommendation
+Data Pipeline Stream:
+ Apache Kafka or 
+Redpanda
+ for real-time transactional event ingestion.
+Microservices Infrastructure:
+ Go (Golang) or Java (Spring Boot) for core micro-agent worker runtimes due to raw execution speed.
+AI/ML Scoring Layer:
+ Python-based 
+FastAPI
+ wrappers executing lightweight 
+XGBoost
+ frameworks or custom 
+PyTorch
+ 
+behavioral
+ models compiled via ONNX runtime for sub-millisecond classification.
+Graph/Link Analysis Database: Neo4j or AWS Neptune to continuously build the entity relationship tree of proxy banking networks and mule account clusters.
+1. System Architecture Overview
+The system operates on an 
+In-Stream Intercept and Evaluate
+ topology. Instead of running checks after a transaction hits the ledger, the API gateway publishes transaction intent to a high-throughput event stream, evaluates it concurrently through specialized smart agents, and waits for a consolidated risk verdict before releasing the transaction to the NIBSS switch.
+       [ MOBILE APP / USSD 
+GATEWAY ]
+                     │
+                     ▼ (HTTPS / 
+mTLS
+)
+             [ API 
+GATEWAY ]
+                     │
+     ┌───────────────┴───────────────┐
+     ▼ (Synchronous 
+Request)   
+      ▼ (Async Telemetry)
+ [ ORCHESTRATOR / RISK 
+MATRIX ]
+  [ APACHE KAFKA EVENT HUB ]
+     │                               │
+     │ (Parallel RPC fan-
+out)   
+     ├─► [ Device Profiler Consumer ]
+     ├──► Device Agent               ├─► [ 
+Behavioral
+ Biometrics 
+Consumer ]
+     ├──► 
+Behavioral
+ Agent           └─► [ Graph Network 
+Engine ]
+     ├──► Transaction Velocity Agent
+     └──► Graph Mule Link Agent
+                     │
+                     ▼ (Consolidated Risk Aggregation)
+        [ DECISION ENGINE 
+WRAPPER ]
+                     │
+         ┌───────────┼───────────┐
+         ▼           ▼           ▼
+     [ 
+APPROVE ]
+ [ STEP-UP ] [ BLOCK & REJECT ]
+High-Velocity Execution Flow
+The Ingestion Tier:
+ The API Gateway acts as a non-blocking reverse proxy. It passes the core payload to the 
+Fraud Orchestrator
+ via Internal 
+gRPC
+ while dumping deep biometric/device metadata into 
+Apache Kafka
+ for continuous offline pattern learning and graph updates.
+Parallel Execution Core:
+ The Fraud Orchestrator splits incoming evaluations across the 4 micro-agents using parallel worker routines (Golang channels or Java Virtual Threads). Each micro-agent is allocated a strict 
+45ms deadline timeout
+. If an agent fails to respond within its window, the engine falls back to fallback heuristics to protect transaction flow.
+The State & Cache Tier:
+ 
+Redis Enterprise Cluster
+ acts as the high-speed data plane, keeping real-time device-binding maps, rolling 24-hour transaction volume metrics per account, and temporary CBN watchlist flags accessible with sub-millisecond lookups.
+2. JSON API Payloads
+The API layer is split into two explicit operations: 
+Device Initialization & Binding
+ (capturing context during device switches or first logins) and 
+Transaction Evaluation
+ (triggered at the moment of an active NIP or intra-bank transfer).
+2.1 Device Initialization & Binding Payload
+Per 
+CBN July 2026 guidelines
+, apps are limited to a single bound device. This payload registers the unique hardware footprint, validates active liveness parameters, and establishes the 24-hour tracking lifecycle for cool-off limits. 
+POST 
+/
+api
+/v1/device/bind
+JSON
+{
+  "
+client
+_metadata
+": {
+    "
+account
+_number
+": "0123456789",
+    "
+bvn
+_hash
+": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "
+associated
+_phone
+": "+234803XXXXXXX"
+  },
+  "
+device
+_profile
+": {
+    "
+device
+_guid
+": "d6c40a5a-8ba5-4f4a-912a-bc964a3a69b2",
+    "
+os
+_platform
+": "Android",
+    "
+os
+_version
+": "14.0.0",
+    "
+device
+_model
+": "Samsung Galaxy S24 Ultra",
+    "
+is
+_rooted
+": false,
+    "
+is
+_emulator
+": false,
+    "
+has
+_vpn_active
+": false,
+    "
+ip
+_address
+": "102.89.23.45",
+    "telephony": {
+      "
+network
+_operator
+": "MTN NG",
+      "
+sim
+_serial_hash
+": "892340000001234567f",
+      "
+is
+_roaming
+": false
+    }
+  },
+  "
+biometric
+_liveness
+": {
+    "
+session
+_token
+": "live_sess_77a1bc99a2a3",
+    "
+liveness
+_confidence_score
+": 0.994,
+    "
+challenge
+_type
+": "RANDOMIZED_BLINK_AND_PHRASE",
+    "
+deepfake
+_probability
+": 0.002
+  },
+  "timestamp": "2026-05-19T17:42:10Z"
+}
+Response (200 OK - Successful Binding with 24h Cooling-Off Enforcement)
+JSON
+{
+  "status": "SUCCESS",
+  "
+binding
+_id
+": "bind_990123847a",
+  "
+device
+_guid
+": "d6c40a5a-8ba5-4f4a-912a-bc964a3a69b2",
+  "
+enforced
+_policies
+": [
+    {
+      "
+policy
+_code
+": "CBN_2026_NEW_DEVICE_COOLOFF",
+      "description": "24-hour outflow and inflow restriction limit of NGN 20,000 max applied upon device activation.",
+      "
+expires
+_at
+": "2026-05-20T17:42:10Z",
+      "
+max
+_allowed_velocity_ngn
+": 20000.00
+    }
+  ],
+  "
+system
+_action
+": "ALLOW_WITH_LIMITS"
+}
+2.2 Transaction Evaluation Payload
+This payload runs concurrently against the agent group at the moment a customer 
+hits
+ "Send Money." It contains transactional parameters paired with real-time 
+behavioral
+ features captured on the page.
+POST 
+/
+api
+/v1/fraud/evaluate
+JSON
+{
+  "
+transaction
+_id
+": "tx_nip_20260519_9941029",
+  "channel": "MOBILE_APP",
+  "
+source
+_account
+": {
+    "
+account
+_number
+": "0123456789",
+    "
+bank
+_code
+": "011",
+    "
+account
+_tier
+": "Tier-3",
+    "
+current
+_balance_ngn
+": 450000.00,
+    "
+days
+_since_reactivation
+": 2
+  },
+  "
+destination
+_account
+": {
+    "
+account
+_number
+": "9087654321",
+    "
+bank
+_code
+": "999",
+    "
+institution
+_type
+": "NEOBANK_TIER3",
+    "
+account
+_name_resolved
+": "Chinedu Abu",
+    "
+days
+_since_creation
+": 1
+  },
+  "
+payment
+_details
+": {
+    "
+amount
+_ngn
+": 18500.00,
+    "
+payment
+_reference
+": "Crypto dynamic buy settlement",
+    "currency": "NGN"
+  },
+  "
+device
+_context
+": {
+    "
+device
+_guid
+": "d6c40a5a-8ba5-4f4a-912a-bc964a3a69b2",
+    "
+current
+_ip
+": "102.89.23.45",
+    "
+location
+_lat_long
+": "6.5244,3.3792"
+  },
+  "
+behavioral
+_telemetry
+": {
+    "
+keystroke
+_dwell_time_avg_ms
+": 78.4,
+    "
+flight
+_time_avg_ms
+": 112.1,
+    "
+input
+_method
+": "PASTED_FROM_CLIPBOARD",
+    "
+time
+_spent_on_transfer_screen_sec
+": 4.2,
+    "
+touch
+_pressure_normalized
+": 0.45
+  },
+  "timestamp": "2026-05-19T17:44:00Z"
+}
+Response (200 OK - Blocked Scenario Due to Cool-Off Violation & Mule Association)
+JSON
+{
+  "
+transaction
+_id
+": "tx_nip_20260519_9941029",
+  "verdict": "REJECT",
+  "
+composite
+_risk_score
+": 0.88,
+  "
+execution
+_time_ms
+": 34,
+  "
+agent
+_breakdown
+": {
+    "
+device
+_agent
+": {
+      "
+risk
+_contribution
+": 0.10,
+      "status": "VERIFIED",
+      "flags": []
+    },
+    "
+behavioral
+_agent
+": {
+      "
+risk
+_contribution
+": 0.45,
+      "status": "ANOMALOUS",
+      "flags": ["ERR_PASTED_ACCOUNT_FAST_SUBMIT", "ERR_PRESSURE_DEVIATION"]
+    },
+    "
+velocity
+_agent
+": {
+      "
+risk
+_contribution
+": 0.95,
+      "status": "BREACH",
+      "flags": ["ERR_CBN_2026_COOLOFF_ACCUMULATED_OUTFLOW_EXCEEDED"]
+    },
+    "
+graph
+_mule_agent
+": {
+      "
+risk
+_contribution
+": 0.82,
+      "status": "SUSPICIOUS",
+      "flags": ["MULE_NETWORK_CLUSTER_TARGET_CONNECTED"]
+    }
+  },
+  "remediation": {
+    "
+action
+_required
+": "BLOCK_AND_LOCK_CHANNEL",
+    "
+reason
+_code
+": "ERR_SECURITY_COOLOFF_BREACH_HIGH_MULE_PROBABILITY",
+    "
+user
+_display_message
+": "Transaction declined. Your application profile is restricted for 24 hours on this new device under regulatory security guidelines."
+  }
+}
+Response (200 OK - Step-Up Scenario Requiring Secondary Validation)
+JSON
+{
+  "
+transaction
+_id
+": "tx_nip_20260519_9941035",
+  "verdict": "CHALLENGE",
+  "
+composite
+_risk_score
+": 0.58,
+  "
+execution
+_time_ms
+": 28,
+  "
+agent
+_breakdown
+": {
+    "
+device_agent
+": 
+{ "
+risk_contribution
+": 0.20, "status": "VERIFIED", "flags": [] },
+    "
+behavioral_agent
+": 
+{ "
+risk_contribution
+": 0.60, "status": "SUSPICIOUS", "flags": ["ERR_TYPING_CADENCE_MISMATCH"] },
+    "
+velocity_agent
+": 
+{ "
+risk_contribution
+": 0.30, "status": "NORMAL", "flags": [] },
+    "
+graph_mule_agent
+": 
+{ "
+risk_contribution
+": 0.15, "status": "NORMAL", "flags": [] }
+  },
+  "remediation": {
+    "
+action
+_required
+": "MFA_STEP_UP",
+    "
+challenge
+_mechanism
+": "HARDWARE_PUSH_BIOMETRIC",
+    "
+reason
+_code
+": "ERR_BEHAVIORAL_DEVIATION_DETECTION",
+    "
+user
+_display_message
+": "Verification required. Please confirm your identity using the fingerprint scanner on your bound device to authorize this transfer."
+  }
+}
+3. Core Logic Implementation Hook (Python ONNX Runtime Example)
+This code shows how the system computes the risk score inside the 
+Decision Engine Wrapper
+ block, integrating rule constraints with deep model inference before compiling the output JSON.
+Python
+import 
+numpy
+ as np
+import 
+onnxruntime
+ as ort
+class 
+DecisionEngineWrapper
+:
+    def __
+init
+_
+_(
+self, 
+model_path
+: str):
+        # High performance ONNX engine initialization for sub-millisecond scoring
+        
+self.session
+ = 
+ort.InferenceSession
+(
+model_path
+, providers=['
+CPUExecutionProvider
+'])
+        
+self.cbn_cooloff_limit
+ = 20000.00
+    def 
+evaluate_
+risk
+(
+self, payload: 
+dict
+, rolling_24h_spend: float) -> 
+dict
+:
+        amount = payload["
+payment_details
+"][
+"
+amount_ngn
+"]
+        
+days_since_device_bind
+ = payload["
+source_account
+"
+].get
+("
+days_since_reactivation
+", 999)
+        
+        # 1. Hard Structural Constraint: Real-Time 2026 CBN Regulation Check
+        if 
+days_since_device_bind
+ <= 1:
+            if (rolling_24h_spend + amount) > 
+self.cbn_cooloff_limit
+:
+                return {
+                    "verdict": "REJECT",
+                    "
+composite
+_risk_score
+": 1.00,
+                    "
+reason
+_code
+": "ERR_CBN_2026_COOLOFF_ACCUMULATED_OUTFLOW_EXCEEDED"
+                }
+        # 2. Extract Vector Data for Model Processing
+        # Vector contains: keystroke cadence deviation, structural hops, account tier, location delta
+        
+input_vector
+ = 
+np.array
+([[
+            payload["
+behavioral_telemetry
+"][
+"
+keystroke_dwell_time_avg_ms
+"],
+            payload["
+behavioral_telemetry
+"][
+"
+flight_time_avg_ms
+"],
+            1.0 if payload["
+behavioral_telemetry
+"][
+"
+input_method
+"] == "PASTED_FROM_CLIPBOARD" else 0.0,
+            payload["
+source_account
+"][
+"
+current_balance_ngn
+"],
+            amount
+        ]], 
+dtype
+=
+np.float
+32)
+        # Execute machine learning model prediction via native memory boundaries
+        inputs = {
+self.session.get_
+inputs
+(
+)[0].name: 
+input_vector
+}
+        
+raw_prediction
+ = 
+self.session.run
+(
+None, inputs)[0][0][0]
+        
+        # 3. Compile Tiered Verdict Matrix
+        if 
+raw_prediction
+ >= 0.75:
+            verdict = "REJECT"
+        
+elif
+ 
+raw_prediction
+ >= 0.40:
+            verdict = "CHALLENGE"
+        else:
+            verdict = "APPROVE"
+        return {
+            "verdict": verdict,
+            "
+composite
+_risk_score
+": float(
+raw_prediction
+),
+            "
+reason_code
+": "MODEL_INFERENCE_COMPLETE" if 
+verdict !
+= "CHALLENGE" else "ERR_BEHAVIORAL_DEVIATION_DETECTION"
+        }
+To track financial fraud networks on the high-velocity 
+NIP (NIBSS Instant Payment)
+ rails, 
+Graph Databases (Neo4j)
+ are significantly superior to traditional SQL. SQL requires complex, multi-layered recursive 
+JOIN
+ operations that slow down exponentially with each transactional hop—violating our 
+180ms execution threshold
+. Neo4j handles multi-hop relational lookups in single-digit milliseconds.
+Below is the production-grade schema and logic design for the 
+Graph Link / Mule Detector Agent
+, optimized to catch 
+Mule Farms
+ and 
+Circular Cash-Out Loops
+ (e.g., layered transfers jumping across traditional commercial banks and Tier-3 
+Neobanks
+/Digital Wallets).
+1. Neo4j Graph Database Architecture
+In this graph model, nodes represent physical and digital entities, while properties track velocities, risks, and device markers.
+ [ 
+ACCOUNT ]
+ ──(TRANSFERRED_TO)──► [ ACCOUNT ] ──(TRANSFERRED_TO)──► [ ACCOUNT ]
+      │                                                                   │
+(OWNED_
+BY)   
+                                                        (OWNED_BY)
+      ▼                                                                   ▼
+   [ 
+BVN ]
+ ◄──────(ASSOCIATED_WITH)────── [ DEVICE ] ──────(OWNED_BY)─── [ NIN ]
+1.1 Node Definitions & Properties
+:Account
+: Individual ledger nodes.
+id
+: String (Format: 
+BankCode_AccountNumber
+, e.g., 
+011_0123456789
+)
+tier
+: String (
+Tier-1
+, 
+Tier-2
+, 
+Tier-3
+)
+institution_type
+: String (
+COMMERCIAL_BANK
+, 
+NEOBANK
+, 
+MFB
+)
+created_at
+: 
+DateTime
+is_active
+: Boolean
+:Identity
+ (Labels: 
+:BVN
+, 
+:NIN
+): Government-verified data identities.
+hash
+: String (SHA-256 string of the raw BVN/NIN for NDPA compliance)
+risk_tier
+: String (
+LOW
+, 
+MEDIUM
+, 
+WATCHLIST
+, 
+BLACKLIST
+)
+:Device
+: The physical endpoint hardware configuration profile.
+guid
+: String (Unique hardware identifier)
+is_rooted
+: Boolean
+1.2 Relationship Definitions & Properties
+-
+[:OWNED
+_BY]->
+: Connects an 
+:Account
+ to an identity (
+:BVN
+/
+:NIN
+).
+-
+[:USED
+_DEVICE]->
+: Connects an 
+:Account
+ to a unique physical 
+:Device
+.
+last_active_at
+: 
+DateTime
+-
+[:TRANSFERRED
+_TO]->
+: The transactional edge between accounts.
+tx_id
+: String (Unique NIP Reference Number)
+amount_ngn
+: Float
+timestamp
+: 
+DateTime
+channel
+: String (
+MOBILE_APP
+, 
+USSD
+, 
+WEB
+)
+2. Cypher Queries for Real-Time Detection
+The Graph Link Agent executes these Cypher queries via parallel connection pools during the 
+45ms execution loop
+.
+Pattern A: Detection of Farmed Mule Account Networks
+The Threat:
+ A single syndicate uses compromised/bought 
+BVNs
+ to open dozens of accounts across different 
+fintechs
+, managing them all from a small cluster of devices. 
+The Query:
+ Detect if the current transaction's destination account shares a device with a high density of unrelated identities.
+Cypher
+MATCH (
+target:Account
+ {id: $
+destination_account_id
+})-[:USED_DEVICE]->(
+d:Device
+)
+MATCH (
+other_
+accounts:Account
+)-[:USED_DEVICE]->(d)
+MATCH (
+other_accounts
+)-
+[:OWNED
+_BY]->(
+i:Identity
+)
+WITH d, 
+count(
+DISTINCT 
+i
+) AS 
+identity_density_count
+WHERE 
+identity_density_count
+ >= 5
+RETURN 
+d.guid
+ AS 
+compromised_device_id
+, 
+identity_density_count
+, true AS 
+is_mule_farm_node
+;
+Pattern B: High-Velocity Circular Transfers (Layering)
+The Threat:
+ Funds are stolen from a victim and routed rapidly through intermediate accounts before returning to a primary account or a specific crypto-offramp wallet to obfuscate the paper trail. 
+The Query:
+ Check if the transaction completes a circular loop within a 30-minute window, up to 4 hops deep.
+Cypher
+MATCH (
+src:Account
+ {id: $
+source_account_id
+})
+MATCH path = (
+src
+)-[
+r:TRANSFERRED
+_TO
+*1..4]->(
+src
+)
+WHERE 
+ALL(
+idx
+ IN range(0, size(r)-2) 
+      WHERE (r[idx+1]
+).timestamp
+ >= (r[
+idx
+]).timestamp 
+      AND 
+duration.inSeconds
+((r[
+idx
+]).timestamp, (r[idx+1]).timestamp).seconds <= 1800)
+RETURN path, true AS 
+circular_loop_detected
+LIMIT 1;
+3. Relational SQL Fallback Database Schema
+For core ledger replication, historical audit reporting, and cold metadata storage, use this highly indexed relational database schema (PostgreSQL compatible).
+SQL
+-- 1. Identity Registry (Anonymized for Data Protection Regulations)
+CREATE TABLE 
+identity_registry
+ (
+    
+identity_hash
+ 
+VARCHAR(
+64) PRIMARY KEY, -- SHA-256 hash of BVN/NIN
+    
+risk_level
+ 
+VARCHAR(
+20) DEFAULT 'LOW' CHECK (
+risk_level
+ IN ('LOW', 'MEDIUM', 'WATCHLIST', 'BLACKLIST')),
+    
+updated_at
+ TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+-- 2. Registered & Bound Devices
+CREATE TABLE devices (
+    
+device_guid
+ UUID PRIMARY KEY,
+    
+os_platform
+ 
+VARCHAR(
+30) NOT NULL,
+    
+is_rooted
+ BOOLEAN DEFAULT FALSE,
+    
+created_at
+ TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+-- 3. Accounts Ledger Registry
+CREATE TABLE accounts (
+    
+account_key
+ 
+VARCHAR(
+20) PRIMARY KEY, -- Format: 
+bankcode_accountnumber
+ (e.g. '011_0123456789')
+    
+account_number
+ 
+VARCHAR(
+10) NOT NULL,
+    
+bank_code
+ 
+VARCHAR(
+3) NOT NULL,
+    
+account_tier
+ 
+VARCHAR(
+10) NOT NULL CHECK (
+account_tier
+ IN ('Tier-1', 'Tier-2', 'Tier-3')),
+    
+identity_hash
+ 
+VARCHAR(
+64) REFERENCES 
+identity_registry
+(
+identity_hash
+),
+    
+is_active
+ BOOLEAN DEFAULT TRUE,
+    
+created_at
+ TIMESTAMP WITH TIME ZONE NOT NULL
+);
+-- 4. Device Activity Multi-Mapping Table
+CREATE TABLE 
+account_device_sessions
+ (
+    
+account_key
+ 
+VARCHAR(
+20) REFERENCES accounts(
+account_key
+),
+    
+device_guid
+ UUID REFERENCES devices(
+device_guid
+),
+    
+last_login_at
+ TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (
+account_key
+, 
+device_guid
+)
+);
+-- 5. Real-time Transaction Ledger Logs
+CREATE TABLE 
+real_time_transactions
+ (
+    
+tx_id
+ 
+VARCHAR(
+50) PRIMARY KEY, -- NIP reference
+    
+source_account_key
+ 
+VARCHAR(
+20) REFERENCES accounts(
+account_key
+),
+    
+destination_account_key
+ 
+VARCHAR(
+20) REFERENCES accounts(
+account_key
+),
+    
+amount_ngn
+ 
+NUMERIC(
+15, 2) NOT NULL,
+    channel 
+VARCHAR(
+15) CHECK (channel IN ('MOBILE_APP', 'USSD', 'WEB')),
+    
+tx_timestamp
+ TIMESTAMP WITH TIME ZONE NOT NULL
+);
+-- High-performance optimization indexes for transactional velocity aggregation
+CREATE INDEX 
+idx_tx_velocity_lookup
+ ON 
+real_time_transactions
+ (
+source_account_key
+, 
+tx_timestamp
+);
+CREATE INDEX 
+idx_accounts_identity
+ ON accounts(
+identity_hash
+);
+CREATE INDEX 
+idx_sessions_device
+ ON 
+account_device_sessions
+(
+device_guid
+);
